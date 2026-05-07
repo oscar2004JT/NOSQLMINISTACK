@@ -7,6 +7,7 @@ use App\Contracts\UserRepository;
 use App\Infrastructure\DynamoDbUserRepository;
 use Aws\DynamoDb\DynamoDbClient;
 use Aws\DynamoDb\Marshaler;
+use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -37,6 +38,7 @@ class AppServiceProvider extends ServiceProvider
                 client: $app->make(DynamoDbClient::class),
                 marshaller: $app->make(Marshaler::class),
                 tableName: config('dynamodb.table'),
+                cache: $app->make(CacheFactory::class)->store(),
             );
         });
 

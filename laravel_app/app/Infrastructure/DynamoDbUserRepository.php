@@ -8,13 +8,17 @@ use App\Domain\Entities\OrderItem;
 use App\Domain\Entities\UserProfile;
 use Aws\DynamoDb\DynamoDbClient;
 use Aws\DynamoDb\Marshaler;
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
 
 class DynamoDbUserRepository implements UserRepository
 {
+    private const ORDERS_CACHE_TTL_SECONDS = 60;
+
     public function __construct(
         private DynamoDbClient $client,
         private Marshaler $marshaller,
         private string $tableName,
+        private CacheRepository $cache,
     ) {
     }
 
@@ -38,8 +42,7 @@ class DynamoDbUserRepository implements UserRepository
 
     public function getUserOrders(string $userId): array
     {
-        return collect($this->queryUserPartition($userId))
-            ->where('Tipo', 'ORDER')
+        return collect($this->getCachedOrderRecords($userId))
             ->map(fn (array $item) => new Order(
                 userId: $userId,
                 orderId: str_replace('ORDER#', '', $item['SK']),
@@ -54,7 +57,7 @@ class DynamoDbUserRepository implements UserRepository
 
     public function getOrder(string $userId, string $orderId): ?Order
     {
-        $order = collect($this->queryUserPartition($userId))
+        $order = collect($this->getCachedOrderRecords($userId))
             ->firstWhere('SK', 'ORDER#'.$orderId);
 
         if ($order === null) {
@@ -69,37 +72,6 @@ class DynamoDbUserRepository implements UserRepository
             direccion: $order['direccion'],
             total: $order['total'],
         );
-    }
-
-    public function getOrderItems(string $userId, string $orderId): array
-    {
-        $response = $this->client->query([
-            'TableName' => $this->tableName,
-            'KeyConditionExpression' => 'PK = :pk AND begins_with(SK, :sk)',
-            'ExpressionAttributeValues' => [
-                ':pk' => ['S' => 'USER#'.$userId],
-                ':sk' => ['S' => 'ORDER#'.$orderId.'#ITEM#'],
-            ],
-        ])->toArray();
-
-        $items = array_map(
-            fn (array $item) => $this->marshaller->unmarshalItem($item),
-            $response['Items'] ?? []
-        );
-
-        return array_map(function (array $item) use ($userId, $orderId) {
-            $parts = explode('#', $item['SK']);
-
-            return new OrderItem(
-                userId: $userId,
-                orderId: $orderId,
-                itemId: (string) end($parts),
-                producto: $item['producto'],
-                cantidad: $item['cantidad'],
-                precio: $item['precio'],
-                subtotal: $item['subtotal'],
-            );
-        }, $items);
     }
 
     public function createTableIfMissing(): void
@@ -129,6 +101,63 @@ class DynamoDbUserRepository implements UserRepository
             'TableName' => $this->tableName,
             'Item' => $this->marshaller->marshalItem($item),
         ]);
+
+        //$this->forgetOrderCachesForItem($item);
+    }
+
+    private function queryOrderItems(string $userId, string $orderId): array
+    {
+        $response = $this->client->query([
+            'TableName' => $this->tableName,
+            'KeyConditionExpression' => 'PK = :pk AND begins_with(SK, :sk)',
+            'ExpressionAttributeValues' => [
+                ':pk' => ['S' => 'USER#'.$userId],
+                ':sk' => ['S' => 'ORDER#'.$orderId.'#ITEM#'],
+            ],
+        ])->toArray();
+
+        return array_map(
+            fn (array $item) => $this->marshaller->unmarshalItem($item),
+            $response['Items'] ?? []
+        );
+    }
+
+    private function forgetOrderCachesForItem(array $item): void
+    {
+        $type = $item['Tipo'] ?? null;
+        $partitionKey = $item['PK'] ?? null;
+        $sortKey = $item['SK'] ?? null;
+
+        if (! in_array($type, ['ORDER', 'ITEM'], true) || ! is_string($partitionKey) || ! is_string($sortKey)) {
+            return;
+        }
+
+        $userId = str_replace('USER#', '', $partitionKey);
+        $this->cache->forget($this->ordersCacheKey($userId));
+
+        if ($type === 'ORDER') {
+            $orderId = str_replace('ORDER#', '', $sortKey);
+            $this->cache->forget($this->orderItemsCacheKey($userId, $orderId));
+
+            return;
+        }
+
+        $parts = explode('#', $sortKey);
+        if (count($parts) < 2 || $parts[0] !== 'ORDER') {
+            return;
+        }
+
+        $this->cache->forget($this->orderItemsCacheKey($userId, $parts[1]));
+    }
+
+    private function ordersCacheKey(string $userId): string
+    {
+        return "mercado:user:{$userId}:orders";
+    }
+
+    private function orderItemsCacheKey(string $userId, string $orderId): string
+    {
+        return "mercado:user:{$userId}:order:{$orderId}:items";
     }
 
     private function queryUserPartition(string $userId): array
@@ -146,4 +175,46 @@ class DynamoDbUserRepository implements UserRepository
             $response['Items'] ?? []
         );
     }
+
+
+
+
+
+    // cache reed through.......................................................
+    private function getCachedOrderRecords(string $userId): array
+    {
+        return $this->cache->remember(
+            $this->ordersCacheKey($userId),
+            now()->addSeconds(self::ORDERS_CACHE_TTL_SECONDS),
+            fn () => collect($this->queryUserPartition($userId))
+                ->where('Tipo', 'ORDER')
+                ->values()
+                ->all()
+        );
+    }
+
+    
+    public function getOrderItems(string $userId, string $orderId): array
+    {
+        $items = $this->cache->remember(
+            $this->orderItemsCacheKey($userId, $orderId),
+            now()->addSeconds(self::ORDERS_CACHE_TTL_SECONDS),
+            fn () => $this->queryOrderItems($userId, $orderId)
+        );
+
+        return array_map(function (array $item) use ($userId, $orderId) {
+            $parts = explode('#', $item['SK']);
+
+            return new OrderItem(
+                userId: $userId,
+                orderId: $orderId,
+                itemId: (string) end($parts),
+                producto: $item['producto'],
+                cantidad: $item['cantidad'],
+                precio: $item['precio'],
+                subtotal: $item['subtotal'],
+            );
+        }, $items);
+    }
+
 }
