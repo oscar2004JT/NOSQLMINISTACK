@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+.DS_Store
+cdk.out/
+cdk.out.deploy/
+.cdk.staging/
+.localstack/
+.ministack-state/
+.ministack-s3/

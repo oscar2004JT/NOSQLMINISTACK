@@ -35,4 +35,8 @@ return [
         ],
     ],
 
+    'serverless' => [
+        'api_base_url' => rtrim((string) env('SERVERLESS_API_BASE_URL', ''), '/'),
+    ],
+
 ];

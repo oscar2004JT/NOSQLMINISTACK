@@ -12,7 +12,8 @@
     <script>
         window.APP_CONFIG = {
             userId: "{{ $userId }}",
-            featuredOrderId: "{{ $featuredOrderId }}"
+            featuredOrderId: "{{ $featuredOrderId }}",
+            apiBaseUrl: "{{ $apiBaseUrl }}"
         };
     </script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>

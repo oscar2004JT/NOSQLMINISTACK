@@ -11,6 +11,7 @@ class MercadoWebController extends Controller
         return view('dashboard', [
             'userId' => '123',
             'featuredOrderId' => '555',
+            'apiBaseUrl' => config('services.serverless.api_base_url'),
         ]);
     }
 }

@@ -1,272 +1,395 @@
-# Mi Mercado Global
+# Mi Mercado Global Monorepo Serverless Local con MiniStack
 
-Aplicacion web construida con Laravel para consultar informacion de usuarios, pedidos e items almacenados en una base de datos NoSQL en Amazon DynamoDB o DynamoDB Local.
+Este repositorio reutiliza la aplicacion actual y la extiende a una arquitectura serverless local basada en Docker, MiniStack y AWS CDK con Python.
 
-## Instalacion completa automatica
+No se creo un proyecto nuevo desde cero. La app existente en `laravel_app/` se conserva como frontend y referencia funcional del dominio, mientras que la infraestructura serverless vive en el mismo monorepo.
 
-Este proyecto incluye un script que instala automaticamente todas las dependencias necesarias para ejecutar la aplicacion desde cero.
+## Arquitectura final
 
-El script `setup.bat` realiza:
+- `laravel_app/`
+  Aplicacion Laravel existente. Sigue funcionando como frontend y como app legacy mientras migras por etapas.
+- `infra/`
+  Infraestructura como codigo con AWS CDK en Python.
+- `lambdas/`
+  Handlers Lambda desacoplados, uno por endpoint.
+- `app/`
+  Capa compartida para Lambdas. Se publica como Lambda Layer y contiene repositorio, servicio, respuestas HTTP y datos demo compartidos.
 
-- Instalacion de PHP 8.2 portable
-- Instalacion de Composer
-- Instalacion de dependencias Laravel
-- Instalacion de dependencias Node (npm)
-- Creacion del archivo .env
-- Generacion de APP_KEY
-- Creacion del contenedor Docker DynamoDB Local
-- Ejecucion de migraciones
-- Carga de datos demo
-
-Solo abre la terminal en la carpeta laravel_app del proyecto y ejecuta:
-
-```bash
-setup.bat
-```
-
-Cuando finalice ejecuta:
-
-```bash
-php artisan serve
-```
-
-Luego abre en tu navegador:
+## Estructura recomendada
 
 ```text
-http://127.0.0.1:8000
+.
+├── Dockerfile
+├── docker-compose.yml
+├── infra/
+│   ├── app.py
+│   ├── cdk.json
+│   ├── mercado_stack.py
+│   ├── requirements.txt
+│   └── scripts/
+│       └── start-cdk.sh
+├── lambdas/
+│   ├── create_order/
+│   ├── get_order_detail/
+│   ├── get_orders/
+│   ├── get_user/
+│   └── seed_demo/
+├── app/
+│   ├── data/
+│   │   └── mercado_seed.json
+│   └── python/
+│       └── mercado/
+└── laravel_app/
 ```
 
----
+## Que se reutilizo del proyecto actual
 
-## Descripcion general
+- El modelo de datos actual basado en `PK` y `SK`
+- Los endpoints existentes:
+  - `GET /usuarios/{userId}`
+  - `GET /usuarios/{userId}/pedidos`
+  - `GET /usuarios/{userId}/pedidos/{orderId}`
+- Los datos demo del proyecto
+- El frontend Laravel actual, que ahora puede apuntar al API Gateway local con `SERVERLESS_API_BASE_URL`
 
-El proyecto muestra:
+## Tecnologias usadas
 
-- Perfil del usuario
-- Lista de pedidos recientes
-- Detalle de un pedido con sus items
-
-La aplicacion expone rutas web y API, consulta la informacion desde DynamoDB y la presenta en una interfaz simple construida con React cargado desde CDN.
-
-## Arquitectura usada
-
-El proyecto sigue una arquitectura por capas, cercana a una arquitectura hexagonal / clean architecture ligera:
-
-- `app/Domain`
-  Contiene las entidades del negocio como `UserProfile`, `Order` y `OrderItem`.
-- `app/Application`
-  Contiene los casos de uso y servicios de aplicacion, por ejemplo `MercadoQueryService` y los datos demo en `SampleData`.
-- `app/Contracts`
-  Define contratos o interfaces, como `UserRepository`.
-- `app/Infrastructure`
-  Implementa el acceso a DynamoDB mediante `DynamoDbUserRepository`.
-- `app/Http/Controllers`
-  Expone la aplicacion mediante controladores web y API.
-- `resources/views` y `public/js`
-  Contienen la vista Blade y el frontend que consume la API.
-
-Esta separacion permite desacoplar la logica de negocio del framework y de la tecnologia de persistencia.
-
-## Dependencias necesarias
-
-Para ejecutar el proyecto se necesita tener instalado:
-
-- PHP 8.2 o superior
-- Composer
-- Node.js
-- npm
-- Laravel 12
-- DynamoDB Local o acceso a una instancia real de Amazon DynamoDB
-
-Si vas a usar DynamoDB Local, normalmente lo puedes correr con:
-
+- Python
 - Docker
+- Docker Compose
+- MiniStack
+- AWS CDK
+- Lambda
+- API Gateway
+- DynamoDB
 
-## Dependencias del proyecto
+## Nota sobre MiniStack y CDK
 
-### Dependencias PHP
+A fecha del 8 de mayo de 2026, MiniStack se presenta como un emulador local de AWS sin cuenta ni licencia, y documenta compatibilidad con:
 
-Definidas en `composer.json`:
+- Lambda
+- API Gateway v1 y v2
+- DynamoDB
+- CloudFormation
+- CDK
 
-- `laravel/framework`
-- `laravel/tinker`
-- `aws/aws-sdk-php`
+Tambien documenta `cdklocal` como wrapper recomendado para deploys CDK contra el endpoint local `:4566`.
 
-### Dependencias de desarrollo en PHP
+Fuentes:
 
-- `fakerphp/faker`
-- `laravel/pail`
-- `laravel/pint`
-- `laravel/sail`
-- `mockery/mockery`
-- `nunomaduro/collision`
-- `phpunit/phpunit`
+- https://ministack.org/
+- https://ministack.org/docs/
+- https://github.com/marianoarias/ministack
 
-### Dependencias de frontend
+## Flujo de trabajo
 
-Definidas en `package.json`:
+### 1. Levantar el entorno local
 
-- `vite`
-- `laravel-vite-plugin`
-- `tailwindcss`
-- `@tailwindcss/vite`
-- `axios`
-- `concurrently`
+Desde la raiz del repo:
 
-### Librerias usadas en tiempo de ejecucion del frontend
+```bash
+docker compose up --build
+```
 
-La vista principal tambien carga estas librerias desde CDN:
+Esto hace lo siguiente:
 
-- React 18
-- ReactDOM 18
-- Babel Standalone
+- Levanta `ministack` con Lambda, API Gateway, CloudFormation, DynamoDB y Logs
+- Levanta el contenedor `cdk`
+- Monta el repo actual como volumen en `/workspace`
+- Espera a que MiniStack quede sano
+- Ejecuta `cdklocal bootstrap` automaticamente una vez al iniciar el contenedor `cdk`
 
-## Libreria usada para conectarse a DynamoDB
+### 2. Entrar al contenedor de desarrollo CDK
 
-La conexion a la base NoSQL se hace con la libreria:
+```bash
+docker compose exec cdk bash
+```
 
-- `aws/aws-sdk-php`
+Luego:
 
-En el codigo se usan principalmente estas clases:
+```bash
+cd /workspace/infra
+```
 
-- `Aws\DynamoDb\DynamoDbClient`
-- `Aws\DynamoDb\Marshaler`
+### 3. Desplegar la infraestructura local
 
-La configuracion e inyeccion de esta conexion esta en:
+```bash
+cdklocal deploy
+```
 
-- `app/Providers/AppServiceProvider.php`
-- `config/dynamodb.php`
+Para iteracion rapida:
 
-La implementacion del repositorio que consulta y guarda datos esta en:
+```bash
+cdklocal deploy --hotswap
+```
 
-- `app/Infrastructure/DynamoDbUserRepository.php`
+## Estado actual de validacion
 
-## Herramientas usadas
+El cambio a MiniStack ya quedo aplicado y validado en estas partes:
 
-Estas son las herramientas y tecnologias principales usadas en el proyecto:
+- `docker compose up --build` funciona
+- `ministackorg/ministack:latest` existe y arranca bien
+- `mi-mercado-ministack` queda `healthy`
+- `mi-mercado-cdk` queda arriba
+- `cdklocal` sintetiza el stack correctamente
 
-- Laravel 12 como framework backend
-- PHP 8.2 como lenguaje principal del servidor
-- Blade para la vista base
-- React 18 para la interfaz del cliente
-- JavaScript para la logica del frontend
-- DynamoDB como base de datos NoSQL
-- AWS SDK for PHP para la comunicacion con DynamoDB
-- Vite como herramienta de build frontend
-- Tailwind CSS como dependencia disponible para estilos
-- Composer para la gestion de paquetes PHP
-- npm para la gestion de paquetes JavaScript
-- Artisan para comandos del framework
-- PHPUnit para pruebas
-- Laravel Pint para formateo de codigo
+Limitacion actual detectada durante la validacion:
 
-## Estructura del proyecto
+- `cdklocal deploy` todavia se atasca en la publicacion de assets a S3 por el modo de direccionamiento virtual-hosted del wrapper `aws-cdk-local`
+- En este repo, el error observado termina en resolucion DNS del bucket bootstrap durante los checks y uploads de assets
+
+En otras palabras:
+
+- el cambio a MiniStack si esta hecho y operativo a nivel de contenedores
+- el paso pendiente es cerrar el workaround de publicacion de assets CDK hacia S3 dentro del emulador
+
+## Bootstrap de infraestructura
+
+El bootstrap ya queda automatizado por `infra/scripts/start-cdk.sh`.
+
+Si quieres ejecutarlo manualmente:
+
+```bash
+cd /workspace/infra
+cdklocal bootstrap aws://000000000000/us-east-1
+```
+
+## Que despliega el stack
+
+El stack CDK crea:
+
+- Una tabla DynamoDB con particion `PK` y orden `SK`
+- Cuatro Lambdas de negocio
+- Un Lambda adicional para seed de datos demo
+- Un API Gateway REST
+- Un Lambda Layer con codigo compartido
+- Logs del API
+
+## Endpoints desplegados
+
+- `GET /usuarios/{userId}`
+- `GET /usuarios/{userId}/pedidos`
+- `GET /usuarios/{userId}/pedidos/{orderId}`
+- `POST /usuarios/{userId}/pedidos`
+
+## Como obtener el endpoint final del API Gateway local
+
+### Opcion 1. Ver outputs del deploy
+
+Al terminar `cdklocal deploy`, CDK mostrara el output:
+
+- `ApiUrlLocal`
+
+Ejemplo:
 
 ```text
-app/
-  Application/
-  Contracts/
-  Domain/
-  Http/Controllers/
-  Infrastructure/
-config/
-public/
-resources/views/
-routes/
+http://localhost:4566/restapis/abc123/local/_user_request_
 ```
 
-## Configuracion del entorno
+### Opcion 2. Consultarlo despues
 
-1. Clona el proyecto.
-2. Entra a la carpeta `laravel_app`.
-3. Instala las dependencias:
+Dentro del contenedor `cdk`:
 
 ```bash
-composer install
-npm install
+awslocal cloudformation describe-stacks \
+  --stack-name MercadoMiniStack \
+  --query "Stacks[0].Outputs[?OutputKey=='ApiUrlLocal'].OutputValue" \
+  --output text
 ```
 
-4. Crea el archivo `.env` si no existe:
+## Como probar endpoints con curl
+
+Si `ApiUrlLocal` es:
+
+```text
+http://localhost:4566/restapis/abc123/local/_user_request_
+```
+
+### GET usuario
 
 ```bash
-copy .env.example .env
+curl "http://localhost:4566/restapis/abc123/local/_user_request_/usuarios/123"
 ```
 
-5. Genera la clave de la aplicacion:
+### GET pedidos
 
 ```bash
-php artisan key:generate
+curl "http://localhost:4566/restapis/abc123/local/_user_request_/usuarios/123/pedidos"
 ```
 
-6. Configura las variables para DynamoDB en el archivo `.env`.
+### GET detalle de pedido
 
-Variables importantes:
+```bash
+curl "http://localhost:4566/restapis/abc123/local/_user_request_/usuarios/123/pedidos/555"
+```
+
+### POST crear pedido
+
+```bash
+curl -X POST "http://localhost:4566/restapis/abc123/local/_user_request_/usuarios/123/pedidos" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "estado": "Preparando envio",
+    "direccion": "Cra 15 # 93-47, Bogota",
+    "items": [
+      {
+        "producto": "Teclado mecanico",
+        "cantidad": 1,
+        "precio": 320
+      },
+      {
+        "producto": "Mouse gamer",
+        "cantidad": 2,
+        "precio": 180
+      }
+    ]
+  }'
+```
+
+## Variables de entorno
+
+El repo ya incluye `.env.serverless` con valores listos para MiniStack:
 
 ```env
-AWS_ACCESS_KEY_ID=fake
-AWS_SECRET_ACCESS_KEY=fake
+AWS_ACCESS_KEY_ID=test
+AWS_SECRET_ACCESS_KEY=test
 AWS_DEFAULT_REGION=us-east-1
-DYNAMODB_ENDPOINT=http://localhost:8000
-DYNAMODB_TABLE=MiMercado
+CDK_DEFAULT_ACCOUNT=000000000000
+DEPLOY_STAGE=local
+DYNAMODB_TABLE=MiMercadoLocal
+LOG_LEVEL=INFO
+MINISTACK_IMAGE_TAG=latest
+MINISTACK_LOG_LEVEL=INFO
+MINISTACK_DOCKER_NETWORK=mercado-serverless
 ```
 
-Nota: la configuracion del proyecto lee `DYNAMODB_ENDPOINT` desde `config/dynamodb.php`.
+### Variables de Laravel
 
-## Como correr el proyecto
+En `laravel_app/.env` puedes usar:
 
-1. Levanta DynamoDB Local en el puerto `8000`.
-2. Ejecuta las migraciones de Laravel para los componentes relacionales auxiliares:
+```env
+AWS_ACCESS_KEY_ID=test
+AWS_SECRET_ACCESS_KEY=test
+AWS_DEFAULT_REGION=us-east-1
+DYNAMODB_ENDPOINT=http://localhost:4566
+DYNAMODB_TABLE=MiMercadoLocal
+SERVERLESS_API_BASE_URL=
+```
+
+Si `SERVERLESS_API_BASE_URL` esta vacia, el frontend sigue usando `/api/...` de Laravel.
+
+Si defines `SERVERLESS_API_BASE_URL` con el valor de `ApiUrlLocal`, el frontend empieza a consumir el API Gateway local.
+
+## Como reutilizar el frontend actual
+
+El frontend existente en `laravel_app/public/js/mercado-app.jsx` ya fue adaptado para trabajar en dos modos:
+
+- Modo actual: consume `Laravel /api/...`
+- Modo serverless: consume `API Gateway` usando `SERVERLESS_API_BASE_URL`
+
+## Como ver logs
+
+### Logs del contenedor MiniStack
 
 ```bash
-php artisan migrate
+docker compose logs -f ministack
 ```
 
-3. Carga los datos demo en DynamoDB:
+### Logs de una Lambda especifica
+
+Dentro del contenedor `cdk`:
 
 ```bash
-php artisan mercado:seed-demo
+awslocal logs tail /aws/lambda/mi-mercado-get-user-local --follow
 ```
 
-4. Inicia el servidor:
+Otros nombres utiles:
+
+- `mi-mercado-get-orders-local`
+- `mi-mercado-get-order-detail-local`
+- `mi-mercado-create-order-local`
+- `mi-mercado-seed-demo-local`
+
+## Como depurar Lambdas localmente
+
+### Opcion 1. Editar y redeploy rapido
+
+Edita:
+
+- `app/python/mercado/`
+- `lambdas/*/handler.py`
+
+Luego:
 
 ```bash
-php artisan serve
+cd /workspace/infra
+cdklocal deploy --hotswap
 ```
 
-5. Abre en el navegador:
-
-```text
-http://127.0.0.1:8000
-```
-
-## Rutas disponibles
-
-### Web
-
-- `/`
-
-### API
-
-- `GET /api/usuarios/{userId}`
-- `GET /api/usuarios/{userId}/pedidos`
-- `GET /api/usuarios/{userId}/pedidos/{orderId}`
-
-## Comando util del proyecto
-
-Para crear la tabla y cargar datos de prueba en DynamoDB:
+### Opcion 2. Invocar la Lambda directamente
 
 ```bash
-php artisan mercado:seed-demo
+awslocal lambda invoke \
+  --function-name mi-mercado-get-user-local \
+  --payload '{"pathParameters":{"userId":"123"}}' \
+  /tmp/get-user.json
+cat /tmp/get-user.json
 ```
 
-Este comando usa los datos definidos en:
+## Como agregar multiples Lambdas
 
-- `app/Application/SampleData.php`
+1. Crea una carpeta nueva en `lambdas/`, por ejemplo `lambdas/get_inventory/handler.py`.
+2. Reutiliza `DynamoDbMercadoRepository` o `MercadoService` desde `app/python/mercado/`.
+3. Declara la nueva Lambda en `infra/mercado_stack.py`.
+4. Dale permisos al recurso necesario.
+5. Agrega el recurso y metodo en API Gateway.
+6. Ejecuta `cdklocal deploy`.
 
-## Observaciones
+## Como conectar bases de datos locales
 
-- El flujo actual esta orientado principalmente a consulta de datos.
-- La informacion principal de negocio vive en DynamoDB.
-- Laravel tambien conserva configuraciones y componentes auxiliares que pueden usar SQLite segun el entorno.
-- El script `setup.bat` permite instalar todo automaticamente.
+### DynamoDB en MiniStack
+
+Las Lambdas usan:
+
+- `DYNAMODB_TABLE`
+- `AWS_DEFAULT_REGION`
+- `USE_AWS_EMULATOR=true`
+- `AWS_ENDPOINT_URL=http://ministack:4566`
+
+El endpoint local se resuelve automaticamente hacia MiniStack.
+
+## Como dejarlo listo para AWS real
+
+El stack usa constructos estandar de AWS CDK, no un modelo especial solo para MiniStack.
+
+Para migrar a AWS real:
+
+1. Usa credenciales reales de AWS.
+2. Ejecuta `cdk bootstrap` en la cuenta real.
+3. Quita `USE_AWS_EMULATOR`.
+4. Elimina el `AWS_ENDPOINT_URL` local.
+5. Despliega con `cdk deploy`.
+
+## Resumen rapido de arranque
+
+```bash
+docker compose up --build
+docker compose exec cdk bash
+cd /workspace/infra
+cdklocal deploy
 ```
+
+Luego:
+
+1. Toma el output `ApiUrlLocal`
+2. Pruebalo con `curl`
+3. Si quieres que Laravel consuma el API Gateway, pega ese valor en `SERVERLESS_API_BASE_URL`
+
+## Archivos clave
+
+- [docker-compose.yml](/c:/Users/oscar/Downloads/NOSQL/V1/docker-compose.yml)
+- [Dockerfile](/c:/Users/oscar/Downloads/NOSQL/V1/Dockerfile)
+- [infra/mercado_stack.py](/c:/Users/oscar/Downloads/NOSQL/V1/infra/mercado_stack.py)
+- [app/python/mercado/service.py](/c:/Users/oscar/Downloads/NOSQL/V1/app/python/mercado/service.py)
+- [lambdas/create_order/handler.py](/c:/Users/oscar/Downloads/NOSQL/V1/lambdas/create_order/handler.py)
+- [laravel_app/public/js/mercado-app.jsx](/c:/Users/oscar/Downloads/NOSQL/V1/laravel_app/public/js/mercado-app.jsx)

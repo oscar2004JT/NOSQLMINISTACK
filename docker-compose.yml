@@ -1,0 +1,73 @@
+services:
+  ministack:
+    image: ministackorg/ministack:${MINISTACK_IMAGE_TAG:-latest}
+    container_name: mi-mercado-ministack
+    env_file:
+      - .env.serverless
+    ports:
+      - "4566:4566"
+    environment:
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      DOCKER_NETWORK: ${MINISTACK_DOCKER_NETWORK:-mercado-serverless}
+      LOG_LEVEL: ${MINISTACK_LOG_LEVEL:-INFO}
+      LAMBDA_EXECUTOR: docker
+      MINISTACK_HOST: ministack
+      PERSIST_STATE: "1"
+      S3_PERSIST: "1"
+      SERVICES: apigateway,cloudformation,dynamodb,iam,lambda,logs,s3,sts
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./.ministack-state:/tmp/ministack-state
+      - ./.ministack-s3:/tmp/ministack-data/s3
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4566/_ministack/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    networks:
+      default:
+        aliases:
+          - localstack
+        ipv4_address: ${MINISTACK_IP:-172.28.0.10}
+
+  cdk:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mi-mercado-cdk
+    env_file:
+      - .env.serverless
+    depends_on:
+      ministack:
+        condition: service_healthy
+    working_dir: /workspace/infra
+    command: ["bash", "/workspace/infra/scripts/start-cdk.sh"]
+    environment:
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      AWS_ENVAR_ALLOWLIST: AWS_DEFAULT_REGION,AWS_REGION,AWS_ENDPOINT_URL,AWS_ENDPOINT_URL_S3,AWS_S3_FORCE_PATH_STYLE
+      AWS_ENDPOINT_URL: http://ministack:4566
+      AWS_ENDPOINT_URL_S3: http://edge.s3.${MINISTACK_IP:-172.28.0.10}.nip.io:4566
+      AWS_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      AWS_S3_FORCE_PATH_STYLE: "1"
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
+      CDK_DEFAULT_ACCOUNT: ${CDK_DEFAULT_ACCOUNT:-000000000000}
+      CDK_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      DEPLOY_STAGE: ${DEPLOY_STAGE:-local}
+      DYNAMODB_ENDPOINT: http://ministack:4566
+      DYNAMODB_TABLE: ${DYNAMODB_TABLE:-MiMercadoLocal}
+      EDGE_PORT: "4566"
+      AWS_EMULATOR_HOST: ministack
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      USE_AWS_EMULATOR: "true"
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./:/workspace
+
+networks:
+  default:
+    name: ${MINISTACK_DOCKER_NETWORK:-mercado-serverless}
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

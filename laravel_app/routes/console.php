@@ -12,7 +12,7 @@ Artisan::command('inspire', function () {
 Artisan::command('mercado:seed-demo', function (DynamoDbUserRepository $repository) {
     $repository->createTableIfMissing();
 
-    foreach (SampleData::ITEMS as $item) {
+    foreach (SampleData::items() as $item) {
         $repository->putItem($item);
     }
 

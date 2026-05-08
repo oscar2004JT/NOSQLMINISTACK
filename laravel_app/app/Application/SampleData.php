@@ -4,51 +4,22 @@ namespace App\Application;
 
 class SampleData
 {
-    public const ITEMS = [
-        [
-            'PK' => 'USER#123',
-            'SK' => 'PROFILE',
-            'Tipo' => 'USER',
-            'nombre' => 'Luisa',
-            'email' => 'luisa@x.com',
-            'direcciones' => ['Calle 10, Bogota', 'Ave 5, Medellin'],
-            'pagos' => ['Visa ****1234', 'PayPal'],
-        ],
-        [
-            'PK' => 'USER#123',
-            'SK' => 'ORDER#555',
-            'Tipo' => 'ORDER',
-            'estado' => 'Pago exitoso',
-            'fecha' => '2023-10-27T08:00Z',
-            'direccion' => 'Calle 10, Bogota',
-            'total' => 1400,
-        ],
-        [
-            'PK' => 'USER#123',
-            'SK' => 'ORDER#555#ITEM#1',
-            'Tipo' => 'ITEM',
-            'producto' => 'Laptop XPS',
-            'cantidad' => 1,
-            'precio' => 1400,
-            'subtotal' => 1400,
-        ],
-        [
-            'PK' => 'USER#123',
-            'SK' => 'ORDER#555#ITEM#2',
-            'Tipo' => 'ITEM',
-            'producto' => 'Libro: El Capital',
-            'cantidad' => 2,
-            'precio' => 25,
-            'subtotal' => 50,
-        ],
-        [
-            'PK' => 'USER#123',
-            'SK' => 'ORDER#556',
-            'Tipo' => 'ORDER',
-            'estado' => 'Enviado',
-            'fecha' => '2023-11-01T09:15Z',
-            'direccion' => 'Calle 10, Bogota',
-            'total' => 300,
-        ],
-    ];
+    public static function items(): array
+    {
+        $path = base_path('../app/data/mercado_seed.json');
+
+        if (! is_file($path)) {
+            return [];
+        }
+
+        $contents = file_get_contents($path);
+
+        if ($contents === false) {
+            return [];
+        }
+
+        $items = json_decode($contents, true);
+
+        return is_array($items) ? $items : [];
+    }
 }

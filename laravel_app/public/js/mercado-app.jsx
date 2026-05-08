@@ -1,5 +1,15 @@
 const { useEffect, useState } = React;
 
+function buildApiUrl(path) {
+    const baseUrl = (window.APP_CONFIG.apiBaseUrl || "").replace(/\/$/, "");
+
+    if (baseUrl) {
+        return `${baseUrl}${path}`;
+    }
+
+    return `/api${path}`;
+}
+
 function formatCurrency(value) {
     return new Intl.NumberFormat("es-CO", {
         style: "currency",
@@ -183,7 +193,7 @@ function App() {
         async function loadUserData() {
             try {
                 setLoadingUser(true);
-                const response = await fetch(`/api/usuarios/${userId}`);
+                const response = await fetch(buildApiUrl(`/usuarios/${userId}`));
                 if (!response.ok) {
                     throw new Error("La API no devolvio el usuario solicitado.");
                 }
@@ -204,7 +214,7 @@ function App() {
         async function loadOrderDetail() {
             try {
                 setLoadingOrder(true);
-                const response = await fetch(`/api/usuarios/${userId}/pedidos/${selectedOrderId}`);
+                const response = await fetch(buildApiUrl(`/usuarios/${userId}/pedidos/${selectedOrderId}`));
                 if (!response.ok) {
                     throw new Error("La API no devolvio el pedido solicitado.");
                 }
