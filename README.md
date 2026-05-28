@@ -401,6 +401,80 @@ cdklocal deploy --all --require-approval never
 Esta separacion mantiene responsabilidades claras y permite evolucionar cada
 capa sin acoplar la infraestructura completa a un unico archivo.
 
+## Infraestructura explicada
+
+La infraestructura se define con AWS CDK en Python dentro de la carpeta
+`infra/`. Los recursos se crean en LocalStack, no en AWS real.
+
+| Archivo | Clase | Que crea | Nombre local principal | Que hace |
+| --- | --- | --- | --- | --- |
+| `infra/core_stack.py` | `CoreStack` | Bucket S3 | `ecommerce-local-assets-local` | Guarda assets y archivos de soporte de la aplicacion local |
+| `infra/persistence_stack.py` | `PersistenceStack` | Tablas DynamoDB | `ecommerce-local-orders`, `productos` | Guarda usuarios, ordenes, items y catalogo de productos |
+| `infra/api_stack.py` | `ApiStack` | Lambda PHP y API Gateway | `ecommerce-local-php-ecommerce`, `ecommerce-local-api` | Expone la UI y las rutas `/api/...` por API Gateway |
+
+### CoreStack
+
+`CoreStack` vive en `infra/core_stack.py`.
+
+- Funcion auxiliar `_bucket_safe_name(project_name)`: normaliza el nombre del
+  proyecto para usarlo en nombres de recursos.
+- Clase `CoreStack`: crea el bucket S3 `AssetsBucket`.
+- Recurso `AssetsBucket`: se publica con el nombre
+  `ecommerce-local-assets-local`.
+- Output `AssetsBucketName`: muestra el nombre del bucket creado.
+
+Este stack existe para recursos compartidos. Ahora mismo solo crea S3, pero
+queda separado para no mezclar archivos compartidos con base de datos o API.
+
+### PersistenceStack
+
+`PersistenceStack` vive en `infra/persistence_stack.py`.
+
+- Funcion auxiliar `_table_safe_name(project_name)`: normaliza el nombre del
+  proyecto para nombres de tablas.
+- Clase `PersistenceStack`: crea las tablas DynamoDB del dominio.
+- Recurso `OrdersTable`: crea la tabla `ecommerce-local-orders`.
+- Recurso `ProductsTable`: crea la tabla `productos`.
+- Indice `TipoIndex`: existe en ambas tablas para consultar registros por el
+  atributo `Tipo`.
+- Output `OrdersTableName`: muestra el nombre de la tabla de usuarios y ordenes.
+- Output `ProductsTableName`: muestra el nombre de la tabla de productos.
+
+La tabla `ecommerce-local-orders` maneja usuario, ordenes e items. La tabla
+`productos` maneja catalogo, stock, categorias, marcas y ofertas.
+
+### ApiStack
+
+`ApiStack` vive en `infra/api_stack.py`.
+
+- Clase `ApiStack`: crea la entrada HTTP del proyecto.
+- Variable `function_name`: arma el nombre de la Lambda como
+  `ecommerce-local-php-ecommerce`.
+- Recurso `EcommercePhpLambda`: Lambda PHP con runtime custom
+  `provided.al2023`.
+- Handler `lambdas/php/ecommerce/index.php`: archivo PHP que recibe todos los
+  eventos desde API Gateway.
+- Recurso `EcommerceApi`: API Gateway REST API con nombre
+  `ecommerce-local-api`.
+- Integracion `LambdaIntegration`: conecta API Gateway con la Lambda PHP.
+- Metodo `ANY /`: manda cualquier metodo del path raiz a la Lambda.
+- Recurso `{proxy+}` con metodo `ANY`: manda cualquier ruta como
+  `/api/productos`, `/api/usuarios/123` o `/ecommerce` a la misma Lambda.
+- Output `EcommerceLambdaName`: muestra el nombre de la Lambda.
+- Output `EcommerceApiLocalUrl`: muestra la URL local para abrir EcoCart.
+
+Variables de entorno importantes que recibe la Lambda:
+
+| Variable | Valor por defecto | Uso |
+| --- | --- | --- |
+| `TABLE_NAME` | `ecommerce-local-orders` | Tabla principal de usuarios, ordenes e items |
+| `USERS_TABLE_NAME` | `ecommerce-local-orders` | Tabla usada para datos del usuario |
+| `PRODUCTS_TABLE_NAME` | `productos` | Tabla usada para catalogo |
+| `DYNAMODB_ENDPOINT` | `http://localstack:4566` | Endpoint DynamoDB dentro de LocalStack |
+| `S3_ENDPOINT` | `http://localstack:4566` | Endpoint S3 dentro de LocalStack |
+| `REDIS_HOST` | `redis` | Host del cache compartido |
+| `REDIS_PORT` | `6379` | Puerto del cache Redis |
+
 ## Lambda PHP custom runtime
 
 La Lambda se empaqueta como ZIP con runtime `provided.al2023`.
@@ -421,4 +495,79 @@ Frontend
   -> API Gateway en LocalStack
   -> Lambda PHP
   -> DynamoDB en LocalStack
+```
+
+## Lambda y funciones PHP
+
+En esta version no hay una Lambda separada por cada endpoint. Hay una sola
+Lambda desplegada:
+
+```text
+ecommerce-local-php-ecommerce
+```
+
+Esa Lambda funciona como router serverless. API Gateway le envia todas las
+rutas y el archivo `lambdas/php/ecommerce/index.php` decide que funcion ejecutar.
+
+### Rutas que maneja la Lambda
+
+| Ruta | Metodo | Funcion PHP principal | Que hace |
+| --- | --- | --- | --- |
+| `/`, `/ecommerce`, `/index.html` | `GET` | `render_app()` | Devuelve el HTML de la interfaz EcoCart |
+| `/app.jsx` | `GET` | `file_response()` | Devuelve el frontend React |
+| `/styles.css` | `GET` | `file_response()` | Devuelve los estilos de la interfaz |
+| `/assets/products/{archivo}.svg` | `GET` | `file_response()` | Devuelve imagenes locales de productos |
+| `/api/productos` | `GET` | `cached_products_response()` | Devuelve productos usando Redis como cache y DynamoDB como fuente |
+| `/api/usuarios/{id}` | `GET` | `mercado_service()->getUserData()` | Devuelve perfil del usuario |
+| `/api/usuarios/{id}/pedidos` | `GET` | `mercado_service()->getOrders()` | Devuelve ordenes del usuario |
+| `/api/usuarios/{id}/pedidos/{pedidoId}` | `GET` | `mercado_service()->getOrderDetail()` | Devuelve una orden con sus items |
+| `/api/usuarios/{id}/pedidos` | `POST` | `mercado_service()->createOrder()` | Crea una orden nueva desde el carrito |
+| Cualquier ruta no registrada | Varios | `json_response(404, ...)` | Responde error de ruta no encontrada |
+
+### Funciones principales dentro de `index.php`
+
+| Funcion | Que hace |
+| --- | --- |
+| `handle_event()` | Punto central del router; lee metodo y path, decide que ruta ejecutar y captura errores |
+| `cached_products_response()` | Implementa cache read-through para `/api/productos` |
+| `read_products_cache()` | Busca productos primero en Redis y valida que el payload sea correcto |
+| `write_products_cache()` | Guarda productos en Redis con TTL de 60 segundos |
+| `redis_get()` | Lee una llave desde Redis |
+| `redis_setex()` | Guarda una llave en Redis con expiracion |
+| `redis_command()` | Abre conexion TCP con Redis y ejecuta comandos usando el protocolo RESP |
+| `request_method()` | Obtiene el metodo HTTP desde el evento de API Gateway |
+| `request_path()` | Obtiene y normaliza la ruta HTTP |
+| `request_json_body()` | Lee el body JSON de requests `POST` |
+| `render_app()` | Genera el HTML base donde carga React |
+| `file_response()` | Sirve archivos estaticos del directorio `public/` |
+| `html_response()` | Arma respuestas HTML compatibles con API Gateway proxy |
+| `json_response()` | Arma respuestas JSON y permite agregar headers como `X-Cache` |
+| `response()` | Construye la respuesta final con CORS, body y status code |
+
+### API Gateway
+
+La API Gateway se llama:
+
+```text
+ecommerce-local-api
+```
+
+El stage local se llama:
+
+```text
+local
+```
+
+La URL tiene esta forma:
+
+```text
+http://localhost:4566/restapis/{apiId}/local/_user_request_/{ruta}
+```
+
+Ejemplos:
+
+```text
+http://localhost:4566/restapis/{apiId}/local/_user_request_/ecommerce
+http://localhost:4566/restapis/{apiId}/local/_user_request_/api/productos
+http://localhost:4566/restapis/{apiId}/local/_user_request_/api/usuarios/123
 ```
