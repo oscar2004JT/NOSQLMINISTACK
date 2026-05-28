@@ -46,6 +46,14 @@ proyecto/
 - S3
 - CloudFormation, IAM, STS, CloudWatch Logs y S3 assets para soporte del despliegue CDK
 
+## Servicios Docker locales
+
+Docker Compose levanta tres servicios principales:
+
+- `localstack`: simula AWS localmente y expone API Gateway, Lambda, DynamoDB y S3.
+- `cdk-local`: contenedor de herramientas para ejecutar CDK, AWS CLI y scripts del proyecto.
+- `redis`: cache compartido de la aplicacion para respuestas de productos.
+
 ## Flujo de despliegue
 
 1. `scripts/prepare-lambda-runtime.ps1` prepara `lambda-runtime/` con PHP CLI.
@@ -95,7 +103,7 @@ Verifica que los contenedores estan activos:
 docker compose ps
 ```
 
-El compose solo levanta LocalStack y el contenedor `cdk-local`; la interfaz
+El compose levanta LocalStack, el contenedor `cdk-local` y Redis. La interfaz
 EcoCart se sirve desde API Gateway + Lambda despues del deploy.
 
 ## Bootstrap CDK local
@@ -206,6 +214,82 @@ DynamoDB:
 ```text
 GET http://localhost:4566/restapis/{apiId}/local/_user_request_/api/productos
 ```
+
+## Cache de productos en la app
+
+El endpoint `/api/productos` usa cache read-through con Redis y TTL de 60
+segundos.
+
+El flujo es:
+
+```text
+Frontend
+  -> API Gateway en LocalStack
+  -> Lambda PHP
+  -> Redis
+  -> DynamoDB, solo si no hay cache valido
+```
+
+La llave usada en Redis es:
+
+```text
+ecocart:productos
+```
+
+Cuando llega una solicitud a `/api/productos`, la Lambda revisa Redis primero:
+
+- Si Redis tiene datos vigentes, responde desde cache con `X-Cache: HIT`.
+- Si Redis no tiene datos o el TTL expiro, consulta DynamoDB, guarda la
+  respuesta en Redis por 60 segundos y responde con `X-Cache: MISS`.
+
+La respuesta tambien incluye `X-Cache-Store: redis` cuando Redis se usa como
+cache. Si Redis no estuviera disponible, la Lambda tiene un fallback temporal
+basado en archivo dentro del runtime, pero el cache principal del proyecto es
+Redis porque es compartido entre invocaciones y runtimes Lambda.
+
+Puedes verificar el cache asi:
+
+```powershell
+$apiId = docker compose exec -T -e AWS_ACCESS_KEY_ID=test -e AWS_SECRET_ACCESS_KEY=test -e AWS_DEFAULT_REGION=us-east-1 -e AWS_REGION=us-east-1 cdk-local aws --endpoint-url=http://localstack:4566 apigateway get-rest-apis --query "items[?name=='ecommerce-local-api'].id | [0]" --output text
+$url = "http://localhost:4566/restapis/$apiId/local/_user_request_/api/productos"
+Invoke-WebRequest -UseBasicParsing $url | Select-Object StatusCode,Headers
+Invoke-WebRequest -UseBasicParsing $url | Select-Object StatusCode,Headers
+```
+
+La primera llamada deberia mostrar `X-Cache: MISS` y la segunda `X-Cache: HIT`,
+si se hacen dentro de los 60 segundos.
+
+Tambien puedes revisar el TTL directo en Redis:
+
+```powershell
+docker compose exec -T redis redis-cli TTL ecocart:productos
+```
+
+## Cache del navegador
+
+El carrito usa cache del navegador con `localStorage`. Este cache no guarda los
+productos del catalogo ni reemplaza Redis; solo guarda el estado del carrito del
+usuario en su propio navegador.
+
+El flujo es:
+
+```text
+Usuario agrega producto
+  -> React actualiza el carrito
+  -> localStorage guarda el carrito
+  -> al recargar la pagina, React recupera el carrito desde localStorage
+```
+
+Ese cache permite que el contador del carrito y los productos agregados sigan
+apareciendo aunque el usuario recargue la pagina. Al hacer click en el icono
+del carrito, el frontend muestra los productos guardados en ese `localStorage`.
+
+Resumen de caches usados:
+
+| Cache | Donde vive | Que guarda | TTL | Compartido |
+| --- | --- | --- | --- | --- |
+| Redis | Contenedor `ecommerce-redis` | Respuesta de `/api/productos` | 60 segundos | Si, entre Lambdas |
+| localStorage | Navegador del usuario | Carrito de compras | Sin TTL automatico | No, solo ese navegador |
 
 ## Abrir EcoCart por API Gateway
 
