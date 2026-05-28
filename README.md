@@ -166,13 +166,13 @@ de compra.
 El stack `PersistenceStack` crea una tabla DynamoDB llamada `productos` con
 modelo single-table para catalogo, inventario, categorias, marcas y ofertas.
 
-| PK | SK | Tipo |
-| --- | --- | --- |
-| PRODUCT#100 | INFO | PRODUCT |
-| PRODUCT#100 | INVENTORY | STOCK |
-| CATEGORY#ELECTRONICA | PRODUCT#100 | PRODUCT_REF |
-| BRAND#APPLE | PRODUCT#100 | PRODUCT_REF |
-| OFFER#1 | PRODUCT#100 | OFFER_ITEM |
+| PK | SK | Tipo | Datos principales |
+| --- | --- | --- | --- |
+| PRODUCT#100 | INFO | PRODUCT | Nombre, categoria, marca, precio, imagen y orden de visualizacion |
+| PRODUCT#100 | INVENTORY | STOCK | Cantidad disponible, estado de inventario y fecha de actualizacion |
+| CATEGORY#ELECTRONICA | PRODUCT#100 | PRODUCT_REF | Referencia para listar productos por categoria |
+| BRAND#APPLE | PRODUCT#100 | PRODUCT_REF | Referencia para listar productos por marca |
+| OFFER#1 | PRODUCT#100 | OFFER_ITEM | Precio de oferta, porcentaje de descuento y vigencia |
 
 El seed `infra/seeds/productos.json` agrega esos registros base y tambien
 productos adicionales para la interfaz EcoCart:
