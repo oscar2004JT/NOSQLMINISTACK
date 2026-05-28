@@ -1,0 +1,355 @@
+{
+  "productos": [
+    {
+      "PutRequest": {
+        "Item": {
+          "PK": {
+            "S": "PRODUCT#100"
+          },
+          "SK": {
+            "S": "INFO"
+          },
+          "Tipo": {
+            "S": "PRODUCT"
+          },
+          "nombre": {
+            "S": "Teléfono Inteligente X100"
+          },
+          "categoria": {
+            "S": "Electrónica"
+          },
+          "marca": {
+            "S": "Apple"
+          },
+          "precio": {
+            "N": "850000"
+          },
+          "imagen": {
+            "S": "https://sgfm.elcorteingles.es/SGFM/dctm/MEDIA03/202210/06/00194612200868____8__1200x1200.jpg"
+          },
+          "orden": {
+            "N": "1"
+          }
+        }
+      }
+    },
+    {
+      "PutRequest": {
+        "Item": {
+          "PK": {
+            "S": "PRODUCT#100"
+          },
+          "SK": {
+            "S": "INVENTORY"
+          },
+          "Tipo": {
+            "S": "STOCK"
+          },
+          "stock": {
+            "N": "15"
+          }
+        }
+      }
+    },
+    {
+      "PutRequest": {
+        "Item": {
+          "PK": {
+            "S": "PRODUCT#200"
+          },
+          "SK": {
+            "S": "INFO"
+          },
+          "Tipo": {
+            "S": "PRODUCT"
+          },
+          "nombre": {
+            "S": "Portátil WorkPro 15"
+          },
+          "categoria": {
+            "S": "Electrónica"
+          },
+          "marca": {
+            "S": "WorkPro"
+          },
+          "precio": {
+            "N": "2200000"
+          },
+          "imagen": {
+            "S": "https://i.pcmag.com/imagery/articles/019B6ClRyAnAN24qsDDI50I-3.fit_lim.v1685987242.jpg"
+          },
+          "orden": {
+            "N": "2"
+          }
+        }
+      }
+    },
+    {
+      "PutRequest": {
+        "Item": {
+          "PK": {
+            "S": "PRODUCT#200"
+          },
+          "SK": {
+            "S": "INVENTORY"
+          },
+          "Tipo": {
+            "S": "STOCK"
+          },
+          "stock": {
+            "N": "8"
+          }
+        }
+      }
+    },
+    {
+      "PutRequest": {
+        "Item": {
+          "PK": {
+            "S": "PRODUCT#300"
+          },
+          "SK": {
+            "S": "INFO"
+          },
+          "Tipo": {
+            "S": "PRODUCT"
+          },
+          "nombre": {
+            "S": "Auriculares Bluetooth Z5"
+          },
+          "categoria": {
+            "S": "Electrónica"
+          },
+          "marca": {
+            "S": "SoundMax"
+          },
+          "precio": {
+            "N": "120000"
+          },
+          "imagen": {
+            "S": "https://m.media-amazon.com/images/I/71F2ccIPPLL._AC_SL1500_.jpg"
+          },
+          "orden": {
+            "N": "3"
+          }
+        }
+      }
+    },
+    {
+      "PutRequest": {
+        "Item": {
+          "PK": {
+            "S": "PRODUCT#300"
+          },
+          "SK": {
+            "S": "INVENTORY"
+          },
+          "Tipo": {
+            "S": "STOCK"
+          },
+          "stock": {
+            "N": "25"
+          }
+        }
+      }
+    },
+    {
+      "PutRequest": {
+        "Item": {
+          "PK": {
+            "S": "PRODUCT#400"
+          },
+          "SK": {
+            "S": "INFO"
+          },
+          "Tipo": {
+            "S": "PRODUCT"
+          },
+          "nombre": {
+            "S": "Reloj Inteligente FitTrack"
+          },
+          "categoria": {
+            "S": "Electrónica"
+          },
+          "marca": {
+            "S": "FitTrack"
+          },
+          "precio": {
+            "N": "350000"
+          },
+          "imagen": {
+            "S": "https://images.unsplash.com/photo-1546868871-7041f2a55e12?auto=format&fit=crop&w=900&q=80"
+          },
+          "orden": {
+            "N": "4"
+          }
+        }
+      }
+    },
+    {
+      "PutRequest": {
+        "Item": {
+          "PK": {
+            "S": "PRODUCT#400"
+          },
+          "SK": {
+            "S": "INVENTORY"
+          },
+          "Tipo": {
+            "S": "STOCK"
+          },
+          "stock": {
+            "N": "3"
+          }
+        }
+      }
+    },
+    {
+      "PutRequest": {
+        "Item": {
+          "PK": {
+            "S": "PRODUCT#500"
+          },
+          "SK": {
+            "S": "INFO"
+          },
+          "Tipo": {
+            "S": "PRODUCT"
+          },
+          "nombre": {
+            "S": "Mochila de Viaje"
+          },
+          "categoria": {
+            "S": "Deportes"
+          },
+          "marca": {
+            "S": "UrbanWay"
+          },
+          "precio": {
+            "N": "90000"
+          },
+          "imagen": {
+            "S": "https://m.media-amazon.com/images/I/71Z-8l3uUmL._AC_SL1500_.jpg"
+          },
+          "orden": {
+            "N": "5"
+          }
+        }
+      }
+    },
+    {
+      "PutRequest": {
+        "Item": {
+          "PK": {
+            "S": "PRODUCT#500"
+          },
+          "SK": {
+            "S": "INVENTORY"
+          },
+          "Tipo": {
+            "S": "STOCK"
+          },
+          "stock": {
+            "N": "50"
+          }
+        }
+      }
+    },
+    {
+      "PutRequest": {
+        "Item": {
+          "PK": {
+            "S": "PRODUCT#600"
+          },
+          "SK": {
+            "S": "INFO"
+          },
+          "Tipo": {
+            "S": "PRODUCT"
+          },
+          "nombre": {
+            "S": "Camiseta Algodón Hombre"
+          },
+          "categoria": {
+            "S": "Ropa"
+          },
+          "marca": {
+            "S": "BasicWear"
+          },
+          "precio": {
+            "N": "45000"
+          },
+          "imagen": {
+            "S": "https://fieito.com/wp-content/uploads/2021/03/camiseta-basica-organica-verde.jpg"
+          },
+          "orden": {
+            "N": "6"
+          }
+        }
+      }
+    },
+    {
+      "PutRequest": {
+        "Item": {
+          "PK": {
+            "S": "PRODUCT#600"
+          },
+          "SK": {
+            "S": "INVENTORY"
+          },
+          "Tipo": {
+            "S": "STOCK"
+          },
+          "stock": {
+            "N": "100"
+          }
+        }
+      }
+    },
+    {
+      "PutRequest": {
+        "Item": {
+          "PK": {
+            "S": "CATEGORY#ELECTRONICA"
+          },
+          "SK": {
+            "S": "PRODUCT#100"
+          },
+          "Tipo": {
+            "S": "PRODUCT_REF"
+          }
+        }
+      }
+    },
+    {
+      "PutRequest": {
+        "Item": {
+          "PK": {
+            "S": "BRAND#APPLE"
+          },
+          "SK": {
+            "S": "PRODUCT#100"
+          },
+          "Tipo": {
+            "S": "PRODUCT_REF"
+          }
+        }
+      }
+    },
+    {
+      "PutRequest": {
+        "Item": {
+          "PK": {
+            "S": "OFFER#1"
+          },
+          "SK": {
+            "S": "PRODUCT#100"
+          },
+          "Tipo": {
+            "S": "OFFER_ITEM"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,73 +1,73 @@
 services:
-  ministack:
-    image: ministackorg/ministack:${MINISTACK_IMAGE_TAG:-latest}
-    container_name: mi-mercado-ministack
-    env_file:
-      - .env.serverless
+  localstack:
+    image: localstack/localstack:3
+    container_name: ecommerce-localstack
     ports:
       - "4566:4566"
+      - "4510-4559:4510-4559"
     environment:
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
-      DOCKER_NETWORK: ${MINISTACK_DOCKER_NETWORK:-mercado-serverless}
-      LOG_LEVEL: ${MINISTACK_LOG_LEVEL:-INFO}
-      LAMBDA_EXECUTOR: docker
-      MINISTACK_HOST: ministack
-      PERSIST_STATE: "1"
-      S3_PERSIST: "1"
-      SERVICES: apigateway,cloudformation,dynamodb,iam,lambda,logs,s3,sts
+      DEBUG: ${LOCALSTACK_DEBUG:-0}
+      EAGER_SERVICE_LOADING: "1"
+      LAMBDA_DOCKER_NETWORK: aws-local-monorepo
+      LOCALSTACK_HOST: localstack
+      PERSISTENCE: "1"
+      SERVICES: cloudformation,cloudwatch,logs,iam,sts,s3,dynamodb,lambda,apigateway,ecr,ssm
     volumes:
+      - localstack-data:/var/lib/localstack
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./.ministack-state:/tmp/ministack-state
-      - ./.ministack-s3:/tmp/ministack-data/s3
+    networks:
+      - local-aws
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4566/_ministack/health')"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:4566/_localstack/health > /dev/null || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 30
-    networks:
-      default:
-        aliases:
-          - localstack
-        ipv4_address: ${MINISTACK_IP:-172.28.0.10}
+      retries: 12
 
-  cdk:
+  cdk-local:
     build:
       context: .
-      dockerfile: Dockerfile
-    container_name: mi-mercado-cdk
-    env_file:
-      - .env.serverless
+      dockerfile: docker/cdk-local/Dockerfile
+    container_name: ecommerce-cdk-local
+    working_dir: /workspace
     depends_on:
-      ministack:
+      localstack:
         condition: service_healthy
-    working_dir: /workspace/infra
-    command: ["bash", "/workspace/infra/scripts/start-cdk.sh"]
     environment:
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
-      AWS_ENVAR_ALLOWLIST: AWS_DEFAULT_REGION,AWS_REGION,AWS_ENDPOINT_URL,AWS_ENDPOINT_URL_S3,AWS_S3_FORCE_PATH_STYLE
-      AWS_ENDPOINT_URL: http://ministack:4566
-      AWS_ENDPOINT_URL_S3: http://edge.s3.${MINISTACK_IP:-172.28.0.10}.nip.io:4566
-      AWS_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
-      AWS_S3_FORCE_PATH_STYLE: "1"
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
       CDK_DEFAULT_ACCOUNT: ${CDK_DEFAULT_ACCOUNT:-000000000000}
-      CDK_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
-      DEPLOY_STAGE: ${DEPLOY_STAGE:-local}
-      DYNAMODB_ENDPOINT: http://ministack:4566
-      DYNAMODB_TABLE: ${DYNAMODB_TABLE:-MiMercadoLocal}
-      EDGE_PORT: "4566"
-      AWS_EMULATOR_HOST: ministack
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      USE_AWS_EMULATOR: "true"
-    stdin_open: true
-    tty: true
+      CDK_DEFAULT_REGION: ${CDK_DEFAULT_REGION:-us-east-1}
+      LOCALSTACK_ENDPOINT: ${LOCALSTACK_ENDPOINT:-http://localstack:4566}
+      PROJECT_NAME: ${PROJECT_NAME:-ecommerce-local}
     volumes:
       - ./:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - local-aws
+    stdin_open: true
+    tty: true
+    command: ["sleep", "infinity"]
+
+  redis:
+    image: redis:7-alpine
+    container_name: ecommerce-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - local-aws
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  localstack-data:
 
 networks:
-  default:
-    name: ${MINISTACK_DOCKER_NETWORK:-mercado-serverless}
-    ipam:
-      config:
-        - subnet: 172.28.0.0/16
+  local-aws:
+    name: aws-local-monorepo
+    driver: bridge

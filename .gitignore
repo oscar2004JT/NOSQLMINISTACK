@@ -1,12 +1,27 @@
+.DS_Store
+
+# Python
 __pycache__/
 *.py[cod]
-.pytest_cache/
-.mypy_cache/
 .venv/
-.DS_Store
+.pytest_cache/
+
+# AWS CDK
 cdk.out/
-cdk.out.deploy/
-.cdk.staging/
+*.jsii
+
+# LocalStack
 .localstack/
-.ministack-state/
-.ministack-s3/
+lambda-runtime/
+
+# Node/npm
+node_modules/
+npm-debug.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Existing local PHP app data
+storage/mercado_data.json

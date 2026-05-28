@@ -1,0 +1,8 @@
+.git
+.venv
+__pycache__
+*.pyc
+cdk.out
+.localstack
+node_modules
+storage/mercado_data.json

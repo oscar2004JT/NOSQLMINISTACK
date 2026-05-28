@@ -1,0 +1,51 @@
+#!/bin/sh
+set -eu
+
+HANDLER="${1:-${_HANDLER:-index.php}}"
+RUNTIME_API="${AWS_LAMBDA_RUNTIME_API:-}"
+PHP_BINARY="/var/task/lambda-runtime/bin/php"
+
+if [ ! -x "$PHP_BINARY" ]; then
+  PHP_BINARY="php"
+fi
+
+export LD_LIBRARY_PATH="/var/task/lambda-runtime/lib64:${LD_LIBRARY_PATH:-}"
+
+if [ -z "$RUNTIME_API" ]; then
+  echo "AWS_LAMBDA_RUNTIME_API is not defined. Run this image through Lambda or LocalStack." >&2
+  exit 1
+fi
+
+while true; do
+  HEADERS_FILE="$(mktemp /tmp/lambda-headers.XXXXXX)"
+  EVENT_FILE="$(mktemp /tmp/lambda-event.XXXXXX)"
+  RESPONSE_FILE="$(mktemp /tmp/lambda-response.XXXXXX)"
+  ERROR_FILE="$(mktemp /tmp/lambda-error.XXXXXX)"
+
+  curl -sS -D "$HEADERS_FILE" -o "$EVENT_FILE" \
+    "http://${RUNTIME_API}/2018-06-01/runtime/invocation/next"
+
+  REQUEST_ID="$(grep -Fi Lambda-Runtime-Aws-Request-Id "$HEADERS_FILE" | tr -d '\r' | awk '{print $2}')"
+
+  if "$PHP_BINARY" "/var/task/${HANDLER}" "$EVENT_FILE" > "$RESPONSE_FILE" 2> "$ERROR_FILE"; then
+    curl -sS -X POST \
+      "http://${RUNTIME_API}/2018-06-01/runtime/invocation/${REQUEST_ID}/response" \
+      -H "Content-Type: application/json" \
+      --data-binary "@${RESPONSE_FILE}" > /dev/null
+  else
+    php -r '
+      $message = trim(file_get_contents($argv[1]));
+      echo json_encode([
+          "errorMessage" => $message !== "" ? $message : "PHP runtime error",
+          "errorType" => "PhpRuntimeError"
+      ]);
+    ' "$ERROR_FILE" > "$RESPONSE_FILE"
+
+    curl -sS -X POST \
+      "http://${RUNTIME_API}/2018-06-01/runtime/invocation/${REQUEST_ID}/error" \
+      -H "Content-Type: application/json" \
+      --data-binary "@${RESPONSE_FILE}" > /dev/null
+  fi
+
+  rm -f "$HEADERS_FILE" "$EVENT_FILE" "$RESPONSE_FILE" "$ERROR_FILE"
+done

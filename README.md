@@ -1,395 +1,340 @@
-# Mi Mercado Global Monorepo Serverless Local con MiniStack
+# AWS LocalStack CDK PHP Monorepo
 
-Este repositorio reutiliza la aplicacion actual y la extiende a una arquitectura serverless local basada en Docker, MiniStack y AWS CDK con Python.
+Monorepo local para simular una arquitectura AWS con Docker, Docker Compose,
+LocalStack, AWS CDK en Python y una Lambda PHP ejecutada con runtime custom.
 
-No se creo un proyecto nuevo desde cero. La app existente en `laravel_app/` se conserva como frontend y referencia funcional del dominio, mientras que la infraestructura serverless vive en el mismo monorepo.
+Este proyecto no usa AWS real. Todos los recursos se crean dentro de
+LocalStack y usan credenciales dummy.
 
-## Arquitectura final
-
-- `laravel_app/`
-  Aplicacion Laravel existente. Sigue funcionando como frontend y como app legacy mientras migras por etapas.
-- `infra/`
-  Infraestructura como codigo con AWS CDK en Python.
-- `lambdas/`
-  Handlers Lambda desacoplados, uno por endpoint.
-- `app/`
-  Capa compartida para Lambdas. Se publica como Lambda Layer y contiene repositorio, servicio, respuestas HTTP y datos demo compartidos.
-
-## Estructura recomendada
+## Arquitectura
 
 ```text
-.
-├── Dockerfile
-├── docker-compose.yml
-├── infra/
-│   ├── app.py
-│   ├── cdk.json
-│   ├── mercado_stack.py
-│   ├── requirements.txt
-│   └── scripts/
-│       └── start-cdk.sh
-├── lambdas/
-│   ├── create_order/
-│   ├── get_order_detail/
-│   ├── get_orders/
-│   ├── get_user/
-│   └── seed_demo/
-├── app/
-│   ├── data/
-│   │   └── mercado_seed.json
-│   └── python/
-│       └── mercado/
-└── laravel_app/
+proyecto/
+|-- infra/
+|   |-- api_stack.py
+|   |-- core_stack.py
+|   `-- persistence_stack.py
+|-- lambdas/
+|   `-- php/
+|       `-- ecommerce/
+|           |-- Dockerfile
+|           |-- bootstrap
+|           `-- index.php
+|-- docker/
+|   |-- cdk-local/
+|   |   `-- Dockerfile
+|   `-- localstack-php-runtime/
+|       `-- Dockerfile
+|-- scripts/
+|   `-- prepare-lambda-runtime.ps1
+|-- .devcontainer/
+|   `-- devcontainer.json
+|-- docker-compose.yml
+|-- app.py
+|-- requirements.txt
+|-- cdk.json
+|-- .env.example
+|-- .gitignore
+`-- README.md
 ```
 
-## Que se reutilizo del proyecto actual
+## Servicios AWS simulados
 
-- El modelo de datos actual basado en `PK` y `SK`
-- Los endpoints existentes:
-  - `GET /usuarios/{userId}`
-  - `GET /usuarios/{userId}/pedidos`
-  - `GET /usuarios/{userId}/pedidos/{orderId}`
-- Los datos demo del proyecto
-- El frontend Laravel actual, que ahora puede apuntar al API Gateway local con `SERVERLESS_API_BASE_URL`
-
-## Tecnologias usadas
-
-- Python
-- Docker
-- Docker Compose
-- MiniStack
-- AWS CDK
-- Lambda
-- API Gateway
+- API Gateway REST API
+- Lambda PHP con runtime custom ZIP
 - DynamoDB
+- S3
+- CloudFormation, IAM, STS, CloudWatch Logs y S3 assets para soporte del despliegue CDK
 
-## Nota sobre MiniStack y CDK
+## Flujo de despliegue
 
-A fecha del 8 de mayo de 2026, MiniStack se presenta como un emulador local de AWS sin cuenta ni licencia, y documenta compatibilidad con:
+1. `scripts/prepare-lambda-runtime.ps1` prepara `lambda-runtime/` con PHP CLI.
+2. `cdk-local` sintetiza la aplicacion CDK.
+3. CDK empaqueta la Lambda como ZIP custom runtime.
+4. CloudFormation en LocalStack crea S3, DynamoDB, Lambda y API Gateway.
+5. API Gateway invoca la Lambda PHP localmente por el puerto `4566`.
 
-- Lambda
-- API Gateway v1 y v2
-- DynamoDB
-- CloudFormation
-- CDK
+## Requisitos
 
-Tambien documenta `cdklocal` como wrapper recomendado para deploys CDK contra el endpoint local `:4566`.
+- Docker Desktop o Docker Engine
+- Docker Compose v2
+- VS Code con extension Dev Containers, opcional
 
-Fuentes:
+No necesitas Python, Node, CDK, PHP ni AWS CLI instalados en tu maquina host:
+todo viene dentro del contenedor `cdk-local`.
 
-- https://ministack.org/
-- https://ministack.org/docs/
-- https://github.com/marianoarias/ministack
+## Variables
 
-## Flujo de trabajo
-
-### 1. Levantar el entorno local
-
-Desde la raiz del repo:
-
-```bash
-docker compose up --build
-```
-
-Esto hace lo siguiente:
-
-- Levanta `ministack` con Lambda, API Gateway, CloudFormation, DynamoDB y Logs
-- Levanta el contenedor `cdk`
-- Monta el repo actual como volumen en `/workspace`
-- Espera a que MiniStack quede sano
-- Ejecuta `cdklocal bootstrap` automaticamente una vez al iniciar el contenedor `cdk`
-
-### 2. Entrar al contenedor de desarrollo CDK
-
-```bash
-docker compose exec cdk bash
-```
-
-Luego:
-
-```bash
-cd /workspace/infra
-```
-
-### 3. Desplegar la infraestructura local
-
-```bash
-cdklocal deploy
-```
-
-Para iteracion rapida:
-
-```bash
-cdklocal deploy --hotswap
-```
-
-## Estado actual de validacion
-
-El cambio a MiniStack ya quedo aplicado y validado en estas partes:
-
-- `docker compose up --build` funciona
-- `ministackorg/ministack:latest` existe y arranca bien
-- `mi-mercado-ministack` queda `healthy`
-- `mi-mercado-cdk` queda arriba
-- `cdklocal` sintetiza el stack correctamente
-
-Limitacion actual detectada durante la validacion:
-
-- `cdklocal deploy` todavia se atasca en la publicacion de assets a S3 por el modo de direccionamiento virtual-hosted del wrapper `aws-cdk-local`
-- En este repo, el error observado termina en resolucion DNS del bucket bootstrap durante los checks y uploads de assets
-
-En otras palabras:
-
-- el cambio a MiniStack si esta hecho y operativo a nivel de contenedores
-- el paso pendiente es cerrar el workaround de publicacion de assets CDK hacia S3 dentro del emulador
-
-## Bootstrap de infraestructura
-
-El bootstrap ya queda automatizado por `infra/scripts/start-cdk.sh`.
-
-Si quieres ejecutarlo manualmente:
-
-```bash
-cd /workspace/infra
-cdklocal bootstrap aws://000000000000/us-east-1
-```
-
-## Que despliega el stack
-
-El stack CDK crea:
-
-- Una tabla DynamoDB con particion `PK` y orden `SK`
-- Cuatro Lambdas de negocio
-- Un Lambda adicional para seed de datos demo
-- Un API Gateway REST
-- Un Lambda Layer con codigo compartido
-- Logs del API
-
-## Endpoints desplegados
-
-- `GET /usuarios/{userId}`
-- `GET /usuarios/{userId}/pedidos`
-- `GET /usuarios/{userId}/pedidos/{orderId}`
-- `POST /usuarios/{userId}/pedidos`
-
-## Como obtener el endpoint final del API Gateway local
-
-### Opcion 1. Ver outputs del deploy
-
-Al terminar `cdklocal deploy`, CDK mostrara el output:
-
-- `ApiUrlLocal`
-
-Ejemplo:
-
-```text
-http://localhost:4566/restapis/abc123/local/_user_request_
-```
-
-### Opcion 2. Consultarlo despues
-
-Dentro del contenedor `cdk`:
-
-```bash
-awslocal cloudformation describe-stacks \
-  --stack-name MercadoMiniStack \
-  --query "Stacks[0].Outputs[?OutputKey=='ApiUrlLocal'].OutputValue" \
-  --output text
-```
-
-## Como probar endpoints con curl
-
-Si `ApiUrlLocal` es:
-
-```text
-http://localhost:4566/restapis/abc123/local/_user_request_
-```
-
-### GET usuario
-
-```bash
-curl "http://localhost:4566/restapis/abc123/local/_user_request_/usuarios/123"
-```
-
-### GET pedidos
-
-```bash
-curl "http://localhost:4566/restapis/abc123/local/_user_request_/usuarios/123/pedidos"
-```
-
-### GET detalle de pedido
-
-```bash
-curl "http://localhost:4566/restapis/abc123/local/_user_request_/usuarios/123/pedidos/555"
-```
-
-### POST crear pedido
-
-```bash
-curl -X POST "http://localhost:4566/restapis/abc123/local/_user_request_/usuarios/123/pedidos" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "estado": "Preparando envio",
-    "direccion": "Cra 15 # 93-47, Bogota",
-    "items": [
-      {
-        "producto": "Teclado mecanico",
-        "cantidad": 1,
-        "precio": 320
-      },
-      {
-        "producto": "Mouse gamer",
-        "cantidad": 2,
-        "precio": 180
-      }
-    ]
-  }'
-```
-
-## Variables de entorno
-
-El repo ya incluye `.env.serverless` con valores listos para MiniStack:
+Puedes copiar `.env.example` a `.env` si quieres modificar nombres o region.
+Los valores por defecto son:
 
 ```env
-AWS_ACCESS_KEY_ID=test
-AWS_SECRET_ACCESS_KEY=test
+PROJECT_NAME=ecommerce-local
+AWS_REGION=us-east-1
 AWS_DEFAULT_REGION=us-east-1
 CDK_DEFAULT_ACCOUNT=000000000000
-DEPLOY_STAGE=local
-DYNAMODB_TABLE=MiMercadoLocal
-LOG_LEVEL=INFO
-MINISTACK_IMAGE_TAG=latest
-MINISTACK_LOG_LEVEL=INFO
-MINISTACK_DOCKER_NETWORK=mercado-serverless
+CDK_DEFAULT_REGION=us-east-1
+LOCALSTACK_ENDPOINT=http://localstack:4566
 ```
 
-### Variables de Laravel
+## Levantar el entorno
 
-En `laravel_app/.env` puedes usar:
+Prepara el runtime PHP que se empaqueta dentro del ZIP de Lambda:
 
-```env
-AWS_ACCESS_KEY_ID=test
-AWS_SECRET_ACCESS_KEY=test
-AWS_DEFAULT_REGION=us-east-1
-DYNAMODB_ENDPOINT=http://localhost:4566
-DYNAMODB_TABLE=MiMercadoLocal
-SERVERLESS_API_BASE_URL=
+```powershell
+.\scripts\prepare-lambda-runtime.ps1
 ```
 
-Si `SERVERLESS_API_BASE_URL` esta vacia, el frontend sigue usando `/api/...` de Laravel.
+```powershell
+docker compose up -d --build
+```
 
-Si defines `SERVERLESS_API_BASE_URL` con el valor de `ApiUrlLocal`, el frontend empieza a consumir el API Gateway local.
+Verifica que los contenedores estan activos:
 
-## Como reutilizar el frontend actual
+```powershell
+docker compose ps
+```
 
-El frontend existente en `laravel_app/public/js/mercado-app.jsx` ya fue adaptado para trabajar en dos modos:
+El compose solo levanta LocalStack y el contenedor `cdk-local`; la interfaz
+EcoCart se sirve desde API Gateway + Lambda despues del deploy.
 
-- Modo actual: consume `Laravel /api/...`
-- Modo serverless: consume `API Gateway` usando `SERVERLESS_API_BASE_URL`
+## Bootstrap CDK local
 
-## Como ver logs
+```powershell
+docker compose exec -T -e LOCALSTACK_HOSTNAME=localstack -e AWS_ENVAR_ALLOWLIST=AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_DEFAULT_REGION,AWS_REGION -e AWS_ACCESS_KEY_ID=test -e AWS_SECRET_ACCESS_KEY=test -e AWS_DEFAULT_REGION=us-east-1 -e AWS_REGION=us-east-1 cdk-local cdklocal bootstrap aws://000000000000/us-east-1
+```
 
-### Logs del contenedor MiniStack
+## Deploy local
+
+```powershell
+docker compose exec -T -e LOCALSTACK_HOSTNAME=localstack -e AWS_ENVAR_ALLOWLIST=AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_DEFAULT_REGION,AWS_REGION -e AWS_ACCESS_KEY_ID=test -e AWS_SECRET_ACCESS_KEY=test -e AWS_DEFAULT_REGION=us-east-1 -e AWS_REGION=us-east-1 cdk-local cdklocal deploy --all --require-approval never
+```
+
+## Tabla usuarios, ordenes e items
+
+El stack `PersistenceStack` crea una tabla DynamoDB llamada
+`ecommerce-local-orders` para el modelo transaccional de usuario, ordenes e
+items.
+
+| PK | SK | Tipo | Datos principales |
+| --- | --- | --- | --- |
+| USER#123 | PROFILE | USER | nombre, email, direcciones, pagos |
+| USER#123 | ORDER#{id} | ORDER | estado, fecha, direccion, total |
+| USER#123 | ORDER#{id}#ITEM#{n} | ITEM | producto, cantidad, precio, subtotal |
+
+La tabla usa:
+
+- Partition key: `PK`
+- Sort key: `SK`
+- GSI: `TipoIndex` con `Tipo` como partition key y `PK` como sort key
+
+El seed inicial solo crea el perfil del usuario. Las ordenes y los items se
+insertan despues, cuando el usuario compra productos desde la tabla
+`productos`.
+
+Cargar perfil inicial:
+
+```powershell
+docker compose exec -T -e AWS_ACCESS_KEY_ID=test -e AWS_SECRET_ACCESS_KEY=test -e AWS_DEFAULT_REGION=us-east-1 -e AWS_REGION=us-east-1 cdk-local aws --endpoint-url=http://localstack:4566 dynamodb batch-write-item --request-items file://infra/seeds/users_orders.json
+```
+
+Consultar todo el agregado de un usuario:
+
+```powershell
+docker compose exec -T -e AWS_ACCESS_KEY_ID=test -e AWS_SECRET_ACCESS_KEY=test -e AWS_DEFAULT_REGION=us-east-1 -e AWS_REGION=us-east-1 cdk-local aws --endpoint-url=http://localstack:4566 dynamodb query --table-name ecommerce-local-orders --key-condition-expression "PK = :pk" --expression-attribute-values '{":pk":{"S":"USER#123"}}'
+```
+
+Consultar una orden y sus items:
+
+```powershell
+docker compose exec -T -e AWS_ACCESS_KEY_ID=test -e AWS_SECRET_ACCESS_KEY=test -e AWS_DEFAULT_REGION=us-east-1 -e AWS_REGION=us-east-1 cdk-local aws --endpoint-url=http://localstack:4566 dynamodb query --table-name ecommerce-local-orders --key-condition-expression "PK = :pk AND begins_with(SK, :sk)" --expression-attribute-values '{":pk":{"S":"USER#123"},":sk":{"S":"ORDER#555"}}'
+```
+
+Ese ultimo query devolvera datos cuando ya se hayan insertado ordenes e items
+de compra.
+
+## Tabla productos
+
+El stack `PersistenceStack` crea una tabla DynamoDB llamada `productos` con
+modelo single-table para catalogo, inventario, categorias, marcas y ofertas.
+
+| PK | SK | Tipo |
+| --- | --- | --- |
+| PRODUCT#100 | INFO | PRODUCT |
+| PRODUCT#100 | INVENTORY | STOCK |
+| CATEGORY#ELECTRONICA | PRODUCT#100 | PRODUCT_REF |
+| BRAND#APPLE | PRODUCT#100 | PRODUCT_REF |
+| OFFER#1 | PRODUCT#100 | OFFER_ITEM |
+
+El seed `infra/seeds/productos.json` agrega esos registros base y tambien
+productos adicionales para la interfaz EcoCart:
+
+- Teléfono Inteligente X100
+- Portátil WorkPro 15
+- Auriculares Bluetooth Z5
+- Reloj Inteligente FitTrack
+- Mochila de Viaje
+- Camiseta Algodón Hombre
+
+La tabla usa:
+
+- Partition key: `PK`
+- Sort key: `SK`
+- GSI: `TipoIndex` con `Tipo` como partition key y `PK` como sort key
+
+Despues del deploy, carga los datos iniciales:
+
+```powershell
+docker compose exec -T -e AWS_ACCESS_KEY_ID=test -e AWS_SECRET_ACCESS_KEY=test -e AWS_DEFAULT_REGION=us-east-1 -e AWS_REGION=us-east-1 cdk-local aws --endpoint-url=http://localstack:4566 dynamodb batch-write-item --request-items file://infra/seeds/productos.json
+```
+
+Consulta todos los items:
+
+```powershell
+docker compose exec -T -e AWS_ACCESS_KEY_ID=test -e AWS_SECRET_ACCESS_KEY=test -e AWS_DEFAULT_REGION=us-east-1 -e AWS_REGION=us-east-1 cdk-local aws --endpoint-url=http://localstack:4566 dynamodb scan --table-name productos
+```
+
+Consulta el producto base:
+
+```powershell
+docker compose exec -T -e AWS_ACCESS_KEY_ID=test -e AWS_SECRET_ACCESS_KEY=test -e AWS_DEFAULT_REGION=us-east-1 -e AWS_REGION=us-east-1 cdk-local aws --endpoint-url=http://localstack:4566 dynamodb query --table-name productos --key-condition-expression "PK = :pk" --expression-attribute-values '{":pk":{"S":"PRODUCT#100"}}'
+```
+
+El frontend llama API Gateway en LocalStack, que invoca la Lambda PHP y consulta
+DynamoDB:
+
+```text
+GET http://localhost:4566/restapis/{apiId}/local/_user_request_/api/productos
+```
+
+## Abrir EcoCart por API Gateway
+
+Obtiene el ID de la API:
+
+```powershell
+$apiId = docker compose exec -T -e AWS_ACCESS_KEY_ID=test -e AWS_SECRET_ACCESS_KEY=test -e AWS_DEFAULT_REGION=us-east-1 -e AWS_REGION=us-east-1 cdk-local aws --endpoint-url=http://localstack:4566 apigateway get-rest-apis --query "items[?name=='ecommerce-local-api'].id | [0]" --output text
+```
+
+Abre la interfaz EcoCart:
+
+```powershell
+curl "http://localhost:4566/restapis/$apiId/local/_user_request_/ecommerce"
+```
+
+En el navegador usa esa misma URL:
+
+```text
+http://localhost:4566/restapis/{apiId}/local/_user_request_/ecommerce
+```
+
+Probar productos por API Gateway:
+
+```powershell
+curl "http://localhost:4566/restapis/$apiId/local/_user_request_/api/productos"
+```
+
+Tambien puedes invocar la Lambda directamente:
+
+```powershell
+docker compose exec -T -e AWS_ACCESS_KEY_ID=test -e AWS_SECRET_ACCESS_KEY=test -e AWS_DEFAULT_REGION=us-east-1 -e AWS_REGION=us-east-1 cdk-local aws --endpoint-url=http://localstack:4566 lambda invoke --function-name ecommerce-local-php-ecommerce --payload "{}" /tmp/response.json
+docker compose exec cdk-local cat /tmp/response.json
+```
+
+## Comandos utiles
+
+Sintetizar CloudFormation:
+
+```powershell
+docker compose exec cdk-local cdklocal synth
+```
+
+Listar stacks:
+
+```powershell
+docker compose exec cdk-local cdklocal list
+```
+
+Listar tablas DynamoDB:
+
+```powershell
+docker compose exec -T -e AWS_ACCESS_KEY_ID=test -e AWS_SECRET_ACCESS_KEY=test -e AWS_DEFAULT_REGION=us-east-1 -e AWS_REGION=us-east-1 cdk-local aws --endpoint-url=http://localstack:4566 dynamodb list-tables
+```
+
+Listar buckets S3:
+
+```powershell
+docker compose exec -T -e AWS_ACCESS_KEY_ID=test -e AWS_SECRET_ACCESS_KEY=test -e AWS_DEFAULT_REGION=us-east-1 -e AWS_REGION=us-east-1 cdk-local aws --endpoint-url=http://localstack:4566 s3 ls
+```
+
+Ver logs de LocalStack:
+
+```powershell
+docker compose logs -f localstack
+```
+
+Destruir la infraestructura local:
+
+```powershell
+docker compose exec cdk-local cdklocal destroy --all --force
+```
+
+Detener contenedores sin borrar persistencia:
+
+```powershell
+docker compose down
+```
+
+Borrar tambien la persistencia de LocalStack:
+
+```powershell
+docker compose down -v
+```
+
+## VS Code DevContainer
+
+Abre la carpeta en VS Code y ejecuta:
+
+```text
+Dev Containers: Reopen in Container
+```
+
+VS Code entrara al servicio `cdk-local`, con el workspace montado en
+`/workspace` y con acceso a LocalStack por `http://localstack:4566`.
+
+Dentro del DevContainer puedes ejecutar directamente:
 
 ```bash
-docker compose logs -f ministack
+cdklocal bootstrap aws://000000000000/us-east-1
+cdklocal deploy --all --require-approval never
 ```
 
-### Logs de una Lambda especifica
+## Separacion de stacks
 
-Dentro del contenedor `cdk`:
+- `CoreStack`: recursos compartidos, actualmente S3.
+- `PersistenceStack`: capa de datos, actualmente DynamoDB con `orders` y `productos`.
+- `ApiStack`: API Gateway y Lambda PHP.
 
-```bash
-awslocal logs tail /aws/lambda/mi-mercado-get-user-local --follow
+Esta separacion mantiene responsabilidades claras y permite evolucionar cada
+capa sin acoplar la infraestructura completa a un unico archivo.
+
+## Lambda PHP custom runtime
+
+La Lambda se empaqueta como ZIP con runtime `provided.al2023`.
+
+- `docker/localstack-php-runtime/Dockerfile`: genera un PHP CLI compatible
+  con Amazon Linux 2023.
+- `scripts/prepare-lambda-runtime.ps1`: copia `php` y sus librerias a
+  `lambda-runtime/` para incluirlos en el ZIP.
+- `bootstrap`: implementa el loop del Lambda Runtime API y ejecuta el PHP
+  empaquetado.
+- `index.php`: router serverless que sirve la UI, archivos estaticos y rutas
+  `/api/...` como respuesta API Gateway proxy.
+
+El flujo queda:
+
+```text
+Frontend
+  -> API Gateway en LocalStack
+  -> Lambda PHP
+  -> DynamoDB en LocalStack
 ```
-
-Otros nombres utiles:
-
-- `mi-mercado-get-orders-local`
-- `mi-mercado-get-order-detail-local`
-- `mi-mercado-create-order-local`
-- `mi-mercado-seed-demo-local`
-
-## Como depurar Lambdas localmente
-
-### Opcion 1. Editar y redeploy rapido
-
-Edita:
-
-- `app/python/mercado/`
-- `lambdas/*/handler.py`
-
-Luego:
-
-```bash
-cd /workspace/infra
-cdklocal deploy --hotswap
-```
-
-### Opcion 2. Invocar la Lambda directamente
-
-```bash
-awslocal lambda invoke \
-  --function-name mi-mercado-get-user-local \
-  --payload '{"pathParameters":{"userId":"123"}}' \
-  /tmp/get-user.json
-cat /tmp/get-user.json
-```
-
-## Como agregar multiples Lambdas
-
-1. Crea una carpeta nueva en `lambdas/`, por ejemplo `lambdas/get_inventory/handler.py`.
-2. Reutiliza `DynamoDbMercadoRepository` o `MercadoService` desde `app/python/mercado/`.
-3. Declara la nueva Lambda en `infra/mercado_stack.py`.
-4. Dale permisos al recurso necesario.
-5. Agrega el recurso y metodo en API Gateway.
-6. Ejecuta `cdklocal deploy`.
-
-## Como conectar bases de datos locales
-
-### DynamoDB en MiniStack
-
-Las Lambdas usan:
-
-- `DYNAMODB_TABLE`
-- `AWS_DEFAULT_REGION`
-- `USE_AWS_EMULATOR=true`
-- `AWS_ENDPOINT_URL=http://ministack:4566`
-
-El endpoint local se resuelve automaticamente hacia MiniStack.
-
-## Como dejarlo listo para AWS real
-
-El stack usa constructos estandar de AWS CDK, no un modelo especial solo para MiniStack.
-
-Para migrar a AWS real:
-
-1. Usa credenciales reales de AWS.
-2. Ejecuta `cdk bootstrap` en la cuenta real.
-3. Quita `USE_AWS_EMULATOR`.
-4. Elimina el `AWS_ENDPOINT_URL` local.
-5. Despliega con `cdk deploy`.
-
-## Resumen rapido de arranque
-
-```bash
-docker compose up --build
-docker compose exec cdk bash
-cd /workspace/infra
-cdklocal deploy
-```
-
-Luego:
-
-1. Toma el output `ApiUrlLocal`
-2. Pruebalo con `curl`
-3. Si quieres que Laravel consuma el API Gateway, pega ese valor en `SERVERLESS_API_BASE_URL`
-
-## Archivos clave
-
-- [docker-compose.yml](/c:/Users/oscar/Downloads/NOSQL/V1/docker-compose.yml)
-- [Dockerfile](/c:/Users/oscar/Downloads/NOSQL/V1/Dockerfile)
-- [infra/mercado_stack.py](/c:/Users/oscar/Downloads/NOSQL/V1/infra/mercado_stack.py)
-- [app/python/mercado/service.py](/c:/Users/oscar/Downloads/NOSQL/V1/app/python/mercado/service.py)
-- [lambdas/create_order/handler.py](/c:/Users/oscar/Downloads/NOSQL/V1/lambdas/create_order/handler.py)
-- [laravel_app/public/js/mercado-app.jsx](/c:/Users/oscar/Downloads/NOSQL/V1/laravel_app/public/js/mercado-app.jsx)

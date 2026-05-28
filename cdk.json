@@ -1,0 +1,20 @@
+{
+  "app": "python app.py",
+  "watch": {
+    "include": [
+      "**"
+    ],
+    "exclude": [
+      "cdk.out",
+      ".git",
+      ".venv",
+      "__pycache__",
+      "node_modules",
+      ".localstack"
+    ]
+  },
+  "context": {
+    "project_name": "ecommerce-local",
+    "@aws-cdk/core:newStyleStackSynthesis": true
+  }
+}

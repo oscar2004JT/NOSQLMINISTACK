@@ -1,0 +1,45 @@
+{
+  "ecommerce-local-orders": [
+    {
+      "PutRequest": {
+        "Item": {
+          "PK": {
+            "S": "USER#123"
+          },
+          "SK": {
+            "S": "PROFILE"
+          },
+          "Tipo": {
+            "S": "USER"
+          },
+          "nombre": {
+            "S": "Luisa"
+          },
+          "email": {
+            "S": "luisa@x.com"
+          },
+          "direcciones": {
+            "L": [
+              {
+                "S": "Calle 10, Bogota"
+              },
+              {
+                "S": "Ave 5, Medellin"
+              }
+            ]
+          },
+          "pagos": {
+            "L": [
+              {
+                "S": "Visa ****1234"
+              },
+              {
+                "S": "PayPal"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}
